@@ -1,0 +1,53 @@
+# Brazilian Portuguese translation for BattGuard.
+msgid ""
+msgstr ""
+"Project-Id-Version: battguard 1.0.0\n"
+"Language: pt_BR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: applet.js
+msgid "Limit battery charge"
+msgstr "Limitar carga da bateria"
+
+#: applet.js
+msgid "Checking…"
+msgstr "Verificando…"
+
+#: applet.js
+msgid "The BattGuard helper is not installed. See the README for installation instructions."
+msgstr "O auxiliar do BattGuard não está instalado. Veja o README para instruções de instalação."
+
+#: applet.js
+msgid "This looks like an Acer laptop, but the Linuwu-Sense driver is not loaded."
+msgstr "Este parece ser um notebook Acer, mas o driver Linuwu-Sense não está carregado."
+
+#: applet.js
+msgid "No supported battery charge-limit interface was found on this computer."
+msgstr "Nenhuma interface compatível de limite de carga da bateria foi encontrada neste computador."
+
+#: applet.js
+msgid "The current battery charge limit could not be read."
+msgstr "Não foi possível ler o limite de carga atual da bateria."
+
+#: applet.js
+msgid "BattGuard is not available on this computer."
+msgstr "O BattGuard não está disponível neste computador."
+
+#: applet.js
+msgid "Battery charge limit: on"
+msgstr "Limite de carga da bateria: ligado"
+
+#: applet.js
+msgid "Battery charge limit: off (full charge allowed)"
+msgstr "Limite de carga da bateria: desligado (carga total permitida)"
+
+#: applet.js
+msgid "Your login shell is not listed in /etc/shells, so pkexec refused to run. See the README (Troubleshooting)."
+msgstr "Seu shell de login não está listado em /etc/shells, então o pkexec se recusou a executar. Veja o README (Troubleshooting)."
+
+#: applet.js
+msgid "Could not change the charge limit."
+msgstr "Não foi possível alterar o limite de carga."

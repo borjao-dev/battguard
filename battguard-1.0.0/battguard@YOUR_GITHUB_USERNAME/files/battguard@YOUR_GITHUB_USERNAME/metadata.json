@@ -1,0 +1,8 @@
+{
+    "uuid": "battguard@YOUR_GITHUB_USERNAME",
+    "name": "BattGuard",
+    "description": "Toggle your laptop's battery charge limit (80%) from the panel. Works ONLY on supported laptops: Acer Predator/Nitro with the Linuwu-Sense driver, and laptops whose kernel exposes charge_control_end_threshold. Needs a small helper installed system-wide (see README).",
+    "version": "1.0.0",
+    "max-instances": 1,
+    "website": "https://github.com/YOUR_GITHUB_USERNAME/battguard"
+}

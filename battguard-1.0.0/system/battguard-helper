@@ -1,0 +1,200 @@
+#!/bin/bash
+# battguard-helper - inspect or change the laptop battery charge limit.
+#
+# Part of BattGuard. SPDX-License-Identifier: MIT
+#
+# Usage: battguard-helper check | on | off | version | help
+#   check    Print "supported", "backend" and "state" as key=value lines.
+#            Needs no privileges.
+#   on       Limit charging to LIMIT_ON_PERCENT (root required).
+#   off      Allow charging up to LIMIT_OFF_PERCENT (root required).
+#
+# Security model: this program is meant to run as root through pkexec. It takes
+# no free-form input, only touches a fixed allow-list of sysfs attributes,
+# refuses paths that resolve outside /sys and verifies every write by reading
+# the value back.
+
+set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+export LC_ALL=C
+umask 077
+
+readonly VERSION="1.0.0"
+readonly LIMIT_ON_PERCENT=80
+readonly LIMIT_OFF_PERCENT=100
+
+readonly EX_USAGE=2
+readonly EX_UNSUPPORTED=10
+readonly EX_WRITE_FAILED=12
+readonly EX_NOT_ROOT=13
+
+# Overwritten here on purpose (an inherited value is ignored); only the test
+# suite reassigns it after sourcing this file.
+SYSFS_ROOT=/sys
+
+die() {
+    local code="$1"
+    shift
+    printf 'battguard-helper: %s\n' "$*" >&2
+    exit "$code"
+}
+
+require_root() {
+    ((EUID == 0)) || die "$EX_NOT_ROOT" "root privileges are required (run it through pkexec)"
+}
+
+# Print the attribute exposed by the Linuwu-Sense driver (Acer Predator/Nitro).
+find_linuwu_attr() {
+    local base group attr
+    for base in \
+        "$SYSFS_ROOT/devices/platform/acer-wmi" \
+        "$SYSFS_ROOT/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi"; do
+        for group in predator_sense nitro_sense; do
+            attr="$base/$group/battery_limiter"
+            if [[ -f "$attr" ]]; then
+                printf '%s\n' "$attr"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+# Print every standard kernel charge-end-threshold attribute (one per battery).
+find_threshold_attrs() {
+    local attr found=1
+    for attr in "$SYSFS_ROOT"/class/power_supply/BAT*/charge_control_end_threshold; do
+        if [[ -f "$attr" ]]; then
+            printf '%s\n' "$attr"
+            found=0
+        fi
+    done
+    return "$found"
+}
+
+detect_backend() {
+    if find_linuwu_attr >/dev/null; then
+        echo linuwu
+    elif find_threshold_attrs >/dev/null; then
+        echo power_supply
+    else
+        echo none
+    fi
+}
+
+read_attr() {
+    local value=""
+    IFS= read -r value <"$1" || true
+    printf '%s\n' "${value//[[:space:]]/}"
+}
+
+read_dmi_vendor() {
+    local file="$SYSFS_ROOT/class/dmi/id/sys_vendor" value=""
+    if [[ -r "$file" ]]; then
+        IFS= read -r value <"$file" || true
+    fi
+    printf '%s' "$value" | tr -cd '[:print:]'
+}
+
+backend_state() {
+    local backend="$1" value
+    local -a attrs=()
+    case "$backend" in
+    linuwu)
+        value="$(read_attr "$(find_linuwu_attr)")"
+        case "$value" in
+        1) echo on ;;
+        0) echo off ;;
+        *) echo unknown ;;
+        esac
+        ;;
+    power_supply)
+        mapfile -t attrs < <(find_threshold_attrs)
+        value="$(read_attr "${attrs[0]}")"
+        if [[ "$value" =~ ^[0-9]+$ ]]; then
+            if ((10#$value < LIMIT_OFF_PERCENT)); then echo on; else echo off; fi
+        else
+            echo unknown
+        fi
+        ;;
+    *) echo unknown ;;
+    esac
+}
+
+cmd_check() {
+    local backend vendor
+    backend="$(detect_backend)"
+    if [[ "$backend" == none ]]; then
+        vendor="$(read_dmi_vendor)"
+        echo "supported=no"
+        if [[ "${vendor,,}" == *acer* ]]; then
+            echo "reason=needs-driver"
+        else
+            echo "reason=unsupported"
+        fi
+        echo "vendor=$vendor"
+        return 0
+    fi
+    echo "supported=yes"
+    echo "backend=$backend"
+    echo "state=$(backend_state "$backend")"
+}
+
+# Write a value to a sysfs attribute, refusing anything that resolves outside it.
+write_attr() {
+    local attr="$1" value="$2" real
+    real="$(realpath -e -- "$attr")" || return 1
+    [[ "$real" == "$SYSFS_ROOT"/* ]] || return 1
+    printf '%s\n' "$value" >"$real"
+}
+
+cmd_set() {
+    local want="$1" backend attr value
+    local -a attrs=()
+    require_root
+    backend="$(detect_backend)"
+    case "$backend" in
+    linuwu)
+        attr="$(find_linuwu_attr)"
+        if [[ "$want" == on ]]; then value=1; else value=0; fi
+        write_attr "$attr" "$value" || die "$EX_WRITE_FAILED" "could not write $attr"
+        [[ "$(read_attr "$attr")" == "$value" ]] || die "$EX_WRITE_FAILED" "the firmware did not accept the change"
+        ;;
+    power_supply)
+        if [[ "$want" == on ]]; then value="$LIMIT_ON_PERCENT"; else value="$LIMIT_OFF_PERCENT"; fi
+        mapfile -t attrs < <(find_threshold_attrs)
+        for attr in "${attrs[@]}"; do
+            write_attr "$attr" "$value" || die "$EX_WRITE_FAILED" "could not write $attr"
+            [[ "$(read_attr "$attr")" == "$value" ]] || die "$EX_WRITE_FAILED" "the firmware did not accept the change"
+        done
+        ;;
+    *) die "$EX_UNSUPPORTED" "no supported charge-limit interface found" ;;
+    esac
+    cmd_check
+}
+
+usage() {
+    echo "Usage: battguard-helper check | on | off | version"
+}
+
+main() {
+    if (($# != 1)); then
+        usage >&2
+        exit "$EX_USAGE"
+    fi
+    case "$1" in
+    check) cmd_check ;;
+    on | off) cmd_set "$1" ;;
+    version | --version) echo "battguard-helper $VERSION" ;;
+    help | --help | -h) usage ;;
+    *)
+        usage >&2
+        exit "$EX_USAGE"
+        ;;
+    esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
